@@ -1,4 +1,0 @@
----
-alwaysApply: true
-You should always follow the tasks in the TASKS.md file. If you are not sure about the task, ask the user for clarification. Also, you should always mark the tasks as completed when you have finished them. But also, mark the tasks as incomplete/in-progress if you have not finished them. You should also mark them as not started if you have not started them yet. 
----
