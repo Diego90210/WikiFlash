@@ -130,7 +130,7 @@ export default function Home() {
       {currentView === "dashboard" && (
         <DashboardView
           decks={decks}
-          onCreateDeck={() => setCurrentView("create")}
+          onCreateDeck={handleCreateDeck}
           onStudyDeck={handleStartStudy}
           onDeleteDeck={handleDeleteDeck}
           onRenameDeck={handleRenameDeck}

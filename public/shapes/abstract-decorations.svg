@@ -1,0 +1,62 @@
+<svg viewBox="0 0 1500 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4EC9A8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3EB89A;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="pinkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F5C9E3;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E8B4D4;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="yellowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFE66D;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F4D03F;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#F39C6B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E67E50;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Teal flower -->
+  <g id="teal-flower">
+    <circle cx="50" cy="50" r="32" fill="url(#tealGrad)" opacity="0.8"/>
+    <circle cx="50" cy="30" r="10" fill="url(#tealGrad)"/>
+    <circle cx="70" cy="50" r="10" fill="url(#tealGrad)"/>
+    <circle cx="50" cy="70" r="10" fill="url(#tealGrad)"/>
+    <circle cx="30" cy="50" r="10" fill="url(#tealGrad)"/>
+    <circle cx="50" cy="50" r="15" fill="#2A9880"/>
+  </g>
+  
+  <!-- Pink spiral -->
+  <g id="pink-spiral">
+    <circle cx="150" cy="50" r="35" fill="none" stroke="url(#pinkGrad)" stroke-width="4"/>
+    <circle cx="150" cy="50" r="28" fill="none" stroke="url(#pinkGrad)" stroke-width="4"/>
+    <circle cx="150" cy="50" r="21" fill="none" stroke="url(#pinkGrad)" stroke-width="4"/>
+    <circle cx="150" cy="50" r="14" fill="none" stroke="url(#pinkGrad)" stroke-width="4"/>
+    <circle cx="150" cy="50" r="7" fill="none" stroke="url(#pinkGrad)" stroke-width="4"/>
+    <circle cx="150" cy="50" r="3" fill="url(#pinkGrad)"/>
+  </g>
+  
+  <!-- Orange asterisk -->
+  <g id="orange-asterisk">
+    <rect x="243" y="33" width="12" height="34" fill="url(#orangeGrad)" rx="1" transform="rotate(0 249 50)"/>
+    <rect x="243" y="33" width="12" height="34" fill="url(#orangeGrad)" rx="1" transform="rotate(45 249 50)"/>
+    <rect x="243" y="33" width="12" height="34" fill="url(#orangeGrad)" rx="1" transform="rotate(90 249 50)"/>
+    <rect x="243" y="33" width="12" height="34" fill="url(#orangeGrad)" rx="1" transform="rotate(135 249 50)"/>
+    <circle cx="249" cy="50" r="6" fill="#E67E50"/>
+  </g>
+  
+  <!-- Yellow star -->
+  <g id="yellow-star">
+    <polygon points="350,30 358,43 373,45 360,55 365,70 350,60 335,70 340,55 327,45 342,43" fill="url(#yellowGrad)"/>
+    <circle cx="350" cy="48" r="3" fill="#FFF4A3"/>
+  </g>
+  
+  <!-- Teal arches -->
+  <g id="teal-arches">
+    <path d="M 420 50 Q 450 25 480 50" stroke="url(#tealGrad)" stroke-width="10" fill="none" stroke-linecap="round"/>
+    <path d="M 425 45 Q 450 30 475 45" stroke="url(#tealGrad)" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <path d="M 430 40 Q 450 35 470 40" stroke="url(#tealGrad)" stroke-width="6" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
