@@ -1,6 +1,6 @@
 export function AbstractShapes() {
   return (
-    <div className="abstract-shapes-container w-full max-w-[500px] mx-auto mb-12 md:mb-16">
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[500px] opacity-10 dark:opacity-5 pointer-events-none animate-float">
       <svg
         viewBox="300 0 600 500"
         xmlns="http://www.w3.org/2000/svg"

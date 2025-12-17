@@ -14,20 +14,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import type { Deck, Flashcard } from "@/app/page"
+import { updateCard as updateCardInDB } from "@/lib/supabase/cards"
+import { updateCard, mapRatingToQuality } from "@/lib/spaced-repetition/sm2"
 
 type StudySessionViewProps = {
   deck: Deck | null
   cards: Flashcard[]
-  onComplete: (stats: { hard: number; good: number; easy: number }) => void
+  onComplete: (stats: { very_hard: number; hard: number; good: number; easy: number; too_easy: number }) => void
   onExit: () => void
 }
 
 export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessionViewProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
-  const [stats, setStats] = useState({ hard: 0, good: 0, easy: 0 })
+  const [stats, setStats] = useState({ very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 })
   const [exitDialog, setExitDialog] = useState(false)
   const [flipping, setFlipping] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   const currentCard = cards[currentIndex]
   const progress = ((currentIndex + 1) / cards.length) * 100
@@ -40,18 +43,46 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
     }, 150)
   }
 
-  const handleRating = (rating: "hard" | "good" | "easy") => {
-    setStats({ ...stats, [rating]: stats[rating] + 1 })
+  const handleRating = async (rating: "very_hard" | "hard" | "good" | "easy" | "too_easy") => {
+    if (!currentCard || isSaving) return
 
-    if (currentIndex < cards.length - 1) {
-      setFlipping(true)
-      setTimeout(() => {
-        setCurrentIndex(currentIndex + 1)
-        setShowAnswer(false)
-        setFlipping(false)
-      }, 150)
-    } else {
-      onComplete({ ...stats, [rating]: stats[rating] + 1 })
+    setIsSaving(true)
+    const newStats = { ...stats, [rating]: stats[rating] + 1 }
+    setStats(newStats)
+
+    try {
+      // Get current card SM-2 data (with defaults for new cards)
+      const cardData = {
+        ease_factor: currentCard.ease_factor ?? 2.5,
+        interval: currentCard.interval ?? 0,
+        repetitions: currentCard.repetitions ?? 0,
+        next_review: currentCard.next_review ?? new Date().toISOString().split('T')[0],
+      }
+
+      // Apply SM-2 algorithm
+      const quality = mapRatingToQuality(rating)
+      const updatedData = updateCard(cardData, quality)
+
+      // Save to Supabase
+      await updateCardInDB(currentCard.id, updatedData)
+
+      // Move to next card or complete session
+      if (currentIndex < cards.length - 1) {
+        setFlipping(true)
+        setTimeout(() => {
+          setCurrentIndex(currentIndex + 1)
+          setShowAnswer(false)
+          setFlipping(false)
+          setIsSaving(false)
+        }, 150)
+      } else {
+        setIsSaving(false)
+        onComplete(newStats)
+      }
+    } catch (error) {
+      console.error("Failed to update card:", error)
+      setIsSaving(false)
+      alert(`Failed to save progress: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
@@ -109,29 +140,53 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
             </CardContent>
           </Card>
 
-          {/* Rating Buttons */}
+          {/* Rating Buttons - SM-2 5-point scale */}
           {showAnswer && (
-            <div className="mt-8 grid grid-cols-3 gap-4">
+            <div className="mt-8 grid grid-cols-5 gap-2">
+              <Button
+                size="lg"
+                onClick={() => handleRating("very_hard")}
+                disabled={isSaving}
+                className="bg-red-600 hover:bg-red-700 text-white h-16 text-sm disabled:opacity-50"
+                title="Complete failure - card resets"
+              >
+                {isSaving ? "..." : "Very Hard"}
+              </Button>
               <Button
                 size="lg"
                 onClick={() => handleRating("hard")}
-                className="bg-red-500 hover:bg-red-600 text-white h-16 text-lg"
+                disabled={isSaving}
+                className="bg-orange-500 hover:bg-orange-600 text-white h-16 text-sm disabled:opacity-50"
+                title="Correct with serious difficulty"
               >
-                Hard
+                {isSaving ? "..." : "Hard"}
               </Button>
               <Button
                 size="lg"
                 onClick={() => handleRating("good")}
-                className="bg-yellow-500 hover:bg-yellow-600 text-white h-16 text-lg"
+                disabled={isSaving}
+                className="bg-yellow-500 hover:bg-yellow-600 text-white h-16 text-sm disabled:opacity-50"
+                title="Correct after hesitation"
               >
-                Good
+                {isSaving ? "..." : "Good"}
               </Button>
               <Button
                 size="lg"
                 onClick={() => handleRating("easy")}
-                className="bg-green-500 hover:bg-green-600 text-white h-16 text-lg"
+                disabled={isSaving}
+                className="bg-green-500 hover:bg-green-600 text-white h-16 text-sm disabled:opacity-50"
+                title="Perfect recall"
               >
-                Easy
+                {isSaving ? "..." : "Easy"}
+              </Button>
+              <Button
+                size="lg"
+                onClick={() => handleRating("too_easy")}
+                disabled={isSaving}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white h-16 text-sm disabled:opacity-50"
+                title="Too easy - perfect recall"
+              >
+                {isSaving ? "..." : "Too Easy"}
               </Button>
             </div>
           )}
@@ -143,7 +198,7 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Exit Study Session?</DialogTitle>
-            <DialogDescription>Your progress will not be saved if you exit now.</DialogDescription>
+            <DialogDescription>Cards you've already reviewed have been saved. You can continue studying later.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setExitDialog(false)}>

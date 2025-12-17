@@ -171,33 +171,15 @@
   animation: float 6s ease-in-out infinite;
 }
 
-/* Added abstract shapes styling for proper sizing and animation */
-.abstract-shapes-container {
-  width: 100%;
-  max-width: 500px;
-  margin: 0 auto 48px;
-}
-
+/* Abstract shapes styling for background positioning */
 .abstract-shapes {
   width: 100%;
   height: auto;
-  animation: float 6s ease-in-out infinite;
-}
-
-/* Light mode - full opacity */
-.abstract-shapes {
-  opacity: 1;
-}
-
-/* Dark mode - slightly reduced for softer appearance */
-.dark .abstract-shapes {
-  opacity: 0.9;
 }
 
 @media (max-width: 768px) {
-  .abstract-shapes-container {
+  .abstract-shapes {
     max-width: 320px;
-    margin-bottom: 32px;
   }
 }
 

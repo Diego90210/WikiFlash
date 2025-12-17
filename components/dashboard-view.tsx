@@ -1,6 +1,6 @@
 "use client"
 
-import { BookOpen, Plus, MoreVertical, Edit2, Trash2, Clock, Sparkles, Brain } from "lucide-react"
+import { BookOpen, Plus, MoreVertical, Edit2, Trash2, Clock, Sparkles, Brain, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -15,19 +15,22 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { AbstractShapes } from "./abstract-shapes"
 import type { Deck } from "@/app/page"
 import { useState } from "react"
+import { detectInputType, extractPageTitleFromUrl } from "@/lib/wikipedia/detectInputType"
+import { searchWikipedia, getPageHtml } from "@/lib/wikipedia/api"
+import { parseWikipediaContent } from "@/lib/wikipedia/parser"
 
 type DashboardViewProps = {
   decks: Deck[]
-  onCreateDeck: (topic: string, cardCount: number) => void
+  onCreateDeck: (topic: string, cardCount: number, content?: string) => void
   onStudyDeck: (deck: Deck) => void
   onDeleteDeck: (id: string) => void
   onRenameDeck: (id: string, newName: string) => void
+  isLoadingDecks?: boolean
 }
 
-export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, onRenameDeck }: DashboardViewProps) {
+export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, onRenameDeck, isLoadingDecks = false }: DashboardViewProps) {
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; deck: Deck | null }>({
     open: false,
     deck: null,
@@ -41,6 +44,9 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
   const [selectedCardCount, setSelectedCardCount] = useState<number>(20)
   const [customCardCount, setCustomCardCount] = useState("")
   const [newName, setNewName] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [loadingStatus, setLoadingStatus] = useState<string>("")
+  const [foundArticle, setFoundArticle] = useState<string | null>(null)
 
   const handleRename = () => {
     if (renameDialog.deck && newName.trim()) {
@@ -57,14 +63,91 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
     }
   }
 
-  const handleCreateDeck = () => {
-    if (wikipediaTopic.trim()) {
-      const count = customCardCount ? Number.parseInt(customCardCount) : selectedCardCount
-      onCreateDeck(wikipediaTopic.trim(), count)
+  const handleCreateDeck = async () => {
+    if (!wikipediaTopic.trim()) {
+      return
+    }
+
+    setIsLoading(true)
+    setLoadingStatus("")
+    setFoundArticle(null)
+    let content: string | undefined
+    let finalTopic = wikipediaTopic.trim()
+
+    try {
+      const inputType = detectInputType(finalTopic)
+
+      if (inputType === 'url') {
+        // Extract title from URL
+        setLoadingStatus("Extracting page title from URL...")
+        const pageTitle = extractPageTitleFromUrl(finalTopic)
+        if (!pageTitle) {
+          throw new Error("Invalid Wikipedia URL. Please check the URL and try again.")
+        }
+        finalTopic = pageTitle
+        setFoundArticle(pageTitle)
+
+        // Fetch page HTML
+        setLoadingStatus("Fetching Wikipedia page...")
+        const html = await getPageHtml(pageTitle)
+        
+        // Parse content
+        setLoadingStatus("Parsing article content...")
+        const parsed = parseWikipediaContent(html, pageTitle)
+        content = parsed.text
+        
+        setLoadingStatus("Article loaded successfully!")
+        
+        // Small delay to show success message
+        await new Promise(resolve => setTimeout(resolve, 500))
+      } else {
+        // Search for topic
+        setLoadingStatus(`Searching Wikipedia for "${finalTopic}"...`)
+        const searchResults = await searchWikipedia(finalTopic)
+        
+        if (searchResults.length === 0) {
+          throw new Error(`No Wikipedia articles found for "${finalTopic}". Please try a different topic.`)
+        }
+
+        // Use the first search result
+        const firstResult = searchResults[0]
+        finalTopic = firstResult.title
+        setFoundArticle(firstResult.title)
+
+        // Fetch page HTML
+        setLoadingStatus(`Loading article: ${firstResult.title}...`)
+        const html = await getPageHtml(firstResult.title)
+        
+        // Parse content
+        setLoadingStatus("Parsing article content...")
+        const parsed = parseWikipediaContent(html, firstResult.title)
+        content = parsed.text
+        
+        setLoadingStatus("Article loaded successfully!")
+        
+        // Small delay to show success message
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+
+      // Call onGenerate with the content
+      // Use custom count only if it's a valid non-empty number, otherwise use selected count
+      const count = customCardCount && customCardCount.trim() && !isNaN(Number.parseInt(customCardCount))
+        ? Number.parseInt(customCardCount)
+        : selectedCardCount
+      onCreateDeck(finalTopic, count, content)
       setCreateDialog(false)
       setWikipediaTopic("")
       setCustomCardCount("")
       setSelectedCardCount(20)
+      setIsLoading(false)
+      setLoadingStatus("")
+      setFoundArticle(null)
+    } catch (error) {
+      console.error("Error fetching Wikipedia content:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch Wikipedia content. Please try again."
+      setLoadingStatus(`Error: ${errorMessage}`)
+      setIsLoading(false)
+      // Don't close dialog on error, let user retry
     }
   }
 
@@ -273,11 +356,13 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-7xl relative z-10">
-        {decks.length === 0 ? (
+        {isLoadingDecks ? (
+          <div className="text-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-muted-foreground">Loading your decks...</p>
+          </div>
+        ) : decks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
-            {/* Abstract Shapes Visual - Enhanced */}
-            <AbstractShapes />
-
             {/* Hero Text */}
             <div className="text-center max-w-2xl mb-8">
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 tracking-tight leading-tight">
@@ -411,16 +496,30 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
                       </p>
                     )}
 
-                    <Button
-                      onClick={() => onStudyDeck(deck)}
-                      className={`w-full h-11 rounded-xl font-semibold transition-all duration-200 ${
-                        deck.dueCount > 0
-                          ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md"
-                          : "bg-secondary hover:bg-secondary/90 text-secondary-foreground shadow-sm hover:shadow-md"
-                      }`}
-                    >
-                      {deck.dueCount > 0 ? "Study Now" : "Review"}
-                    </Button>
+                    {/* All Caught Up Message (Strict Spaced Repetition) */}
+                    {deck.dueCount === 0 ? (
+                      <div className="text-center p-4 bg-muted/50 rounded-xl border border-border">
+                        <div className="text-2xl mb-2">🎉</div>
+                        <h3 className="text-sm font-bold mb-1 text-foreground">All caught up!</h3>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          You've reviewed everything scheduled for today.
+                        </p>
+                        <Button
+                          onClick={() => onStudyDeck(deck)}
+                          disabled
+                          className="w-full h-10 rounded-xl font-semibold bg-muted text-muted-foreground cursor-not-allowed"
+                        >
+                          Study Now
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => onStudyDeck(deck)}
+                        className="w-full h-11 rounded-xl font-semibold transition-all duration-200 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md"
+                      >
+                        Study Now
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -429,7 +528,23 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
         )}
       </div>
 
-      <Dialog open={createDialog} onOpenChange={setCreateDialog}>
+      <Dialog 
+        open={createDialog} 
+        onOpenChange={(open) => {
+          if (!isLoading) {
+            setCreateDialog(open)
+            if (!open) {
+              // Reset state when dialog closes
+              setWikipediaTopic("")
+              setCustomCardCount("")
+              setSelectedCardCount(20)
+              setIsLoading(false)
+              setLoadingStatus("")
+              setFoundArticle(null)
+            }
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[600px] rounded-2xl p-10">
           <DialogHeader className="mb-6">
             <DialogTitle className="text-3xl font-bold">Create New Deck</DialogTitle>
@@ -447,9 +562,39 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
                 value={wikipediaTopic}
                 onChange={(e) => setWikipediaTopic(e.target.value)}
                 className="h-13 text-base rounded-xl border-2 focus-visible:ring-primary"
-                onKeyDown={(e) => e.key === "Enter" && handleCreateDeck()}
+                onKeyDown={(e) => e.key === "Enter" && !isLoading && handleCreateDeck()}
+                disabled={isLoading}
               />
               <p className="text-sm text-muted-foreground/50">e.g., Ancient Rome, Photosynthesis, Machine Learning</p>
+              
+              {/* Loading Status */}
+              {isLoading && loadingStatus && (
+                <div className="mt-3 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <p className="text-sm text-foreground font-medium">{loadingStatus}</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Found Article Display */}
+              {foundArticle && (
+                <div className="mt-3 p-3 bg-accent/10 border border-accent/20 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-accent" />
+                    <p className="text-sm text-foreground">
+                      <span className="font-medium">Found article:</span> {foundArticle}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Error Display */}
+              {!isLoading && loadingStatus && loadingStatus.startsWith("Error:") && (
+                <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                  <p className="text-sm text-destructive font-medium">{loadingStatus}</p>
+                </div>
+              )}
             </div>
 
             {/* Card Count Selector */}
@@ -500,10 +645,20 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
           <div className="mt-8">
             <Button
               onClick={handleCreateDeck}
-              disabled={!wikipediaTopic.trim()}
+              disabled={!wikipediaTopic.trim() || isLoading}
               className="w-full h-13 text-lg font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
             >
-              Generate Flashcards
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  {loadingStatus || "Loading..."}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-5 w-5" />
+                  Generate Flashcards
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>
@@ -524,7 +679,7 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
             className="rounded-xl"
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameDialog({ open, deck: null })} className="rounded-xl">
+            <Button variant="outline" onClick={() => setRenameDialog({ open: false, deck: null })} className="rounded-xl">
               Cancel
             </Button>
             <Button onClick={handleRename} className="rounded-xl">
@@ -545,7 +700,7 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialog({ open, deck: null })} className="rounded-xl">
+            <Button variant="outline" onClick={() => setDeleteDialog({ open: false, deck: null })} className="rounded-xl">
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete} className="rounded-xl">
