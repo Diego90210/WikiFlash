@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { LanguageProvider } from "@/lib/language/context"
 import { Toaster } from "@/components/ui/sonner"
@@ -54,6 +55,7 @@ export default function RootLayout({
           </LanguageProvider>
         </ThemeProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   )
