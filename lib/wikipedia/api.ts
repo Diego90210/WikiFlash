@@ -24,14 +24,16 @@ export interface WikipediaApiError {
 /**
  * Search Wikipedia for a topic
  * @param topic - The topic to search for
+ * @param language - Language code (default: 'en')
  * @returns Array of search results
  */
-export async function searchWikipedia(topic: string): Promise<WikipediaSearchResult[]> {
+export async function searchWikipedia(topic: string, language: string = 'en'): Promise<WikipediaSearchResult[]> {
   if (!topic || !topic.trim()) {
     throw new Error('Topic cannot be empty')
   }
 
-  const searchUrl = new URL('https://en.wikipedia.org/w/api.php')
+  const wikipediaDomain = language === 'es' ? 'es.wikipedia.org' : 'en.wikipedia.org'
+  const searchUrl = new URL(`https://${wikipediaDomain}/w/api.php`)
   searchUrl.searchParams.set('action', 'query')
   searchUrl.searchParams.set('list', 'search')
   searchUrl.searchParams.set('srsearch', topic.trim())
@@ -77,14 +79,16 @@ export async function searchWikipedia(topic: string): Promise<WikipediaSearchRes
 /**
  * Get Wikipedia page content by title
  * @param title - The page title
+ * @param language - Language code (default: 'en')
  * @returns Wikipedia page content
  */
-export async function getPageContent(title: string): Promise<WikipediaPage> {
+export async function getPageContent(title: string, language: string = 'en'): Promise<WikipediaPage> {
   if (!title || !title.trim()) {
     throw new Error('Title cannot be empty')
   }
 
-  const contentUrl = new URL('https://en.wikipedia.org/w/api.php')
+  const wikipediaDomain = language === 'es' ? 'es.wikipedia.org' : 'en.wikipedia.org'
+  const contentUrl = new URL(`https://${wikipediaDomain}/w/api.php`)
   contentUrl.searchParams.set('action', 'query')
   contentUrl.searchParams.set('prop', 'extracts|info')
   contentUrl.searchParams.set('titles', title.trim())
@@ -150,14 +154,16 @@ export async function getPageContent(title: string): Promise<WikipediaPage> {
 /**
  * Get Wikipedia page HTML content (for parsing)
  * @param title - The page title
+ * @param language - Language code (default: 'en')
  * @returns HTML content of the page
  */
-export async function getPageHtml(title: string): Promise<string> {
+export async function getPageHtml(title: string, language: string = 'en'): Promise<string> {
   if (!title || !title.trim()) {
     throw new Error('Title cannot be empty')
   }
 
-  const htmlUrl = new URL('https://en.wikipedia.org/w/api.php')
+  const wikipediaDomain = language === 'es' ? 'es.wikipedia.org' : 'en.wikipedia.org'
+  const htmlUrl = new URL(`https://${wikipediaDomain}/w/api.php`)
   htmlUrl.searchParams.set('action', 'parse')
   htmlUrl.searchParams.set('page', title.trim())
   htmlUrl.searchParams.set('format', 'json')

@@ -6,12 +6,17 @@ export interface FlashcardPromptInput {
   content: string
   topic: string
   count: number
+  language?: 'en' | 'es'
 }
 
 /**
  * Generate the system prompt for flashcard generation
  */
-export function getSystemPrompt(): string {
+export function getSystemPrompt(language: 'en' | 'es' = 'en'): string {
+  const languageInstruction = language === 'es' 
+    ? 'IMPORTANTE: Todas las preguntas y respuestas deben estar completamente en español. Genera las tarjetas en español.'
+    : 'IMPORTANT: All questions and answers must be in English. Generate the flashcards in English.'
+  
   return `You are an expert educational content creator specializing in creating high-quality flashcards for spaced repetition learning.
 
 Your task is to create flashcards from the provided Wikipedia article content. Each flashcard should:
@@ -27,6 +32,7 @@ Guidelines:
 - Avoid trivial or overly obvious questions
 - Prioritize information that is central to understanding the topic
 - Ensure questions and answers are factually accurate based on the provided content
+- ${languageInstruction}
 
 CRITICAL: You must return ONLY a valid JSON array. Do not wrap it in an object. Do not include markdown code blocks. Do not include any explanatory text.
 
@@ -43,6 +49,10 @@ Start your response with [ and end with ]. No other text before or after.`
  * Generate the user prompt with content and requirements
  */
 export function getUserPrompt(input: FlashcardPromptInput): string {
+  const languageInstruction = input.language === 'es' 
+    ? 'IMPORTANTE: Todas las preguntas y respuestas deben estar completamente en español. Genera las tarjetas en español basándote en el contenido proporcionado.'
+    : 'IMPORTANT: All questions and answers must be in English. Generate the flashcards in English based on the provided content.'
+  
   return `Create exactly ${input.count} high-quality flashcards from the following Wikipedia article about "${input.topic}":
 
 ${input.content}
@@ -52,6 +62,7 @@ Requirements:
 - Each flashcard must have a "question" and "answer" field
 - Questions should test understanding of key concepts, facts, definitions, dates, or relationships
 - Answers should be informative and based on the provided content
+- ${languageInstruction}
 - Return ONLY a valid JSON array, no additional text
 
 CRITICAL: Return ONLY a JSON array starting with [ and ending with ]. No markdown, no code blocks, no explanatory text.

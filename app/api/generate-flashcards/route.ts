@@ -9,7 +9,7 @@ import { generateFlashcards } from '@/lib/ai/generateFlashcards'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { content, count, topic } = body
+    const { content, count, topic, language = 'en' } = body
 
     // Validate input
     if (!content || typeof content !== 'string') {
@@ -33,8 +33,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate language
+    const validLanguage = language === 'es' ? 'es' : 'en'
+
     // Generate flashcards
-    const flashcards = await generateFlashcards(content, count, topic)
+    const flashcards = await generateFlashcards(content, count, topic, validLanguage)
 
     return NextResponse.json({ flashcards })
   } catch (error) {

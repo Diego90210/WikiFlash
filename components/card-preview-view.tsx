@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useTranslations } from "@/lib/language/use-translations"
 import type { Deck, Flashcard } from "@/app/page"
 
 type CardPreviewViewProps = {
@@ -27,6 +28,7 @@ type CardPreviewViewProps = {
 }
 
 export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard, onRegenerate }: CardPreviewViewProps) {
+  const t = useTranslations()
   const [editDialog, setEditDialog] = useState<{ open: boolean; card: Flashcard | null }>({
     open: false,
     card: null,
@@ -42,17 +44,17 @@ export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard,
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
-        <Button variant="ghost" onClick={onRegenerate} className="mb-6">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
+        <Button variant="ghost" onClick={onRegenerate} className="mb-6" aria-label={t.goBackToRegenerate}>
+          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+          {t.back}
         </Button>
 
         <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2 text-foreground">Review Your Flashcards</h2>
+          <h2 className="text-3xl font-bold mb-2 text-foreground">{t.reviewYourFlashcards}</h2>
           <p className="text-muted-foreground">
-            {cards.length} cards generated for {deck?.name}
+            {cards.length} {t.cardsGeneratedFor} {deck?.name}
           </p>
         </div>
 
@@ -74,18 +76,20 @@ export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard,
                         setEditQuestion(card.question)
                         setEditAnswer(card.answer)
                       }}
+                      aria-label={`${t.editCard}: ${card.question}`}
                     >
-                      <Edit2 className="h-3.5 w-3.5" />
-                      <span className="sr-only">Edit card</span>
+                      <Edit2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="sr-only">{t.editCard}</span>
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
                       onClick={() => onDeleteCard(card.id)}
+                      aria-label={`${t.deleteCard}: ${card.question}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span className="sr-only">Delete card</span>
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="sr-only">{t.deleteCard}</span>
                     </Button>
                   </div>
                 </div>
@@ -98,17 +102,24 @@ export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard,
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button variant="outline" size="lg" onClick={onRegenerate} className="w-full sm:w-auto bg-transparent">
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Regenerate
+          <Button 
+            variant="outline" 
+            size="lg" 
+            onClick={onRegenerate} 
+            className="w-full sm:w-auto bg-transparent"
+            aria-label={t.regenerate}
+          >
+            <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t.regenerate}
           </Button>
           <Button
             size="lg"
             onClick={onSave}
             className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+            aria-label={t.saveDeck}
           >
-            <Save className="mr-2 h-4 w-4" />
-            Save Deck
+            <Save className="mr-2 h-4 w-4" aria-hidden="true" />
+            {t.saveDeck}
           </Button>
         </div>
       </div>
@@ -117,39 +128,48 @@ export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard,
       <Dialog open={editDialog.open} onOpenChange={(open) => setEditDialog({ open, card: null })}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit Flashcard</DialogTitle>
-            <DialogDescription>Modify the question and answer for this card.</DialogDescription>
+            <DialogTitle>{t.editFlashcard}</DialogTitle>
+            <DialogDescription>{t.modifyCardDescription}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-question">Question</Label>
+              <Label htmlFor="edit-question">{t.question}</Label>
               <Input
                 id="edit-question"
                 value={editQuestion}
                 onChange={(e) => setEditQuestion(e.target.value)}
-                placeholder="Enter question"
+                placeholder={t.enterQuestion}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-answer">Answer</Label>
+              <Label htmlFor="edit-answer">{t.answer}</Label>
               <Textarea
                 id="edit-answer"
                 value={editAnswer}
                 onChange={(e) => setEditAnswer(e.target.value)}
-                placeholder="Enter answer"
+                placeholder={t.enterAnswer}
                 rows={5}
                 className="resize-none"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialog({ open: false, card: null })}>
-              Cancel
+            <Button 
+              variant="outline" 
+              onClick={() => setEditDialog({ open: false, card: null })}
+              aria-label={t.cancel}
+            >
+              {t.cancel}
             </Button>
-            <Button onClick={handleEdit}>Save Changes</Button>
+            <Button 
+              onClick={handleEdit}
+              aria-label={t.saveChanges}
+            >
+              {t.saveChanges}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </main>
   )
 }

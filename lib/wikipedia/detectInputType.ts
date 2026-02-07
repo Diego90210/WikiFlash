@@ -58,3 +58,33 @@ export function extractPageTitleFromUrl(url: string): string | null {
   }
 }
 
+/**
+ * Extracts both language and page title from a Wikipedia URL
+ * @param url - Wikipedia URL
+ * @returns Object with language code and title, or null if invalid
+ */
+export function extractLanguageAndTitleFromUrl(url: string): { language: string | null; title: string | null } {
+  try {
+    const urlWithProtocol = url.startsWith('http') ? url : `https://${url}`
+    const urlObj = new URL(urlWithProtocol)
+    const hostname = urlObj.hostname
+
+    // Extract language code from hostname (e.g., "es.wikipedia.org" -> "es")
+    const langMatch = hostname.match(/^([a-z]{2,3})(-[a-z]{2,3})?\.(m\.)?wikipedia\.org$/i)
+    const language = langMatch ? langMatch[1].toLowerCase() : null
+
+    // Extract title from pathname
+    const pathname = urlObj.pathname
+    if (!pathname.startsWith('/wiki/')) {
+      return { language, title: null }
+    }
+
+    const title = pathname.slice(6) // Remove '/wiki/'
+    const decoded = decodeURIComponent(title.replace(/_/g, ' '))
+
+    return { language, title: decoded }
+  } catch (error) {
+    return { language: null, title: null }
+  }
+}
+

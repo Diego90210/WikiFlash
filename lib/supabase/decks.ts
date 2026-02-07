@@ -4,6 +4,7 @@
 
 import { supabase } from '../supabase'
 import type { Deck, Flashcard } from '@/app/page'
+import { getDeckLanguage } from '@/lib/deck-language-storage'
 
 export interface DeckRow {
   id: string
@@ -123,6 +124,9 @@ export async function getDecks(sessionId: string): Promise<Deck[]> {
       return reviewDate <= today
     }).length
 
+    // Get stored language for this deck
+    const deckLanguage = getDeckLanguage(deck.id)
+
     return {
       id: deck.id,
       name: deck.name,
@@ -130,6 +134,7 @@ export async function getDecks(sessionId: string): Promise<Deck[]> {
       cardCount: totalCards,
       dueCount: dueCards,
       lastStudied: deck.last_studied_at ? new Date(deck.last_studied_at) : undefined,
+      language: deckLanguage,
     }
   })
 }

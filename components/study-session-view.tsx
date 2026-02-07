@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { toast } from "sonner"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -13,6 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useTranslations } from "@/lib/language/use-translations"
+import { useLanguage } from "@/lib/language/context"
+import { useCardTranslation } from "@/lib/translation/use-card-translation"
 import type { Deck, Flashcard } from "@/app/page"
 import { updateCard as updateCardInDB } from "@/lib/supabase/cards"
 import { updateCard, mapRatingToQuality } from "@/lib/spaced-repetition/sm2"
@@ -25,6 +29,9 @@ type StudySessionViewProps = {
 }
 
 export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessionViewProps) {
+  const t = useTranslations()
+  const { language } = useLanguage()
+  const { translatedCards, isTranslating } = useCardTranslation(cards, deck?.language)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
   const [stats, setStats] = useState({ very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 })
@@ -32,8 +39,10 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
   const [flipping, setFlipping] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
-  const currentCard = cards[currentIndex]
-  const progress = ((currentIndex + 1) / cards.length) * 100
+  // Use translated cards if available, otherwise use original
+  const displayCards = translatedCards.length > 0 ? translatedCards : cards
+  const currentCard = displayCards[currentIndex]
+  const progress = ((currentIndex + 1) / displayCards.length) * 100
 
   const handleShowAnswer = () => {
     setFlipping(true)
@@ -41,6 +50,13 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
       setShowAnswer(true)
       setFlipping(false)
     }, 150)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent, rating: "very_hard" | "hard" | "good" | "easy" | "too_easy") => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      handleRating(rating)
+    }
   }
 
   const handleRating = async (rating: "very_hard" | "hard" | "good" | "easy" | "too_easy") => {
@@ -51,23 +67,26 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
     setStats(newStats)
 
     try {
+      // Find the original card (not translated) to save progress
+      const originalCard = cards.find(c => c.id === currentCard.id) || currentCard
+      
       // Get current card SM-2 data (with defaults for new cards)
       const cardData = {
-        ease_factor: currentCard.ease_factor ?? 2.5,
-        interval: currentCard.interval ?? 0,
-        repetitions: currentCard.repetitions ?? 0,
-        next_review: currentCard.next_review ?? new Date().toISOString().split('T')[0],
+        ease_factor: originalCard.ease_factor ?? 2.5,
+        interval: originalCard.interval ?? 0,
+        repetitions: originalCard.repetitions ?? 0,
+        next_review: originalCard.next_review ?? new Date().toISOString().split('T')[0],
       }
 
       // Apply SM-2 algorithm
       const quality = mapRatingToQuality(rating)
       const updatedData = updateCard(cardData, quality)
 
-      // Save to Supabase
-      await updateCardInDB(currentCard.id, updatedData)
+      // Save to Supabase using original card ID
+      await updateCardInDB(originalCard.id, updatedData)
 
       // Move to next card or complete session
-      if (currentIndex < cards.length - 1) {
+      if (currentIndex < displayCards.length - 1) {
         setFlipping(true)
         setTimeout(() => {
           setCurrentIndex(currentIndex + 1)
@@ -82,58 +101,84 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
     } catch (error) {
       console.error("Failed to update card:", error)
       setIsSaving(false)
-      alert(`Failed to save progress: ${error instanceof Error ? error.message : "Unknown error"}`)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      
+      if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
+        toast.error("Network error", {
+          description: "Unable to save your progress. Please check your internet connection. Your progress will be saved when you're back online.",
+          duration: 5000,
+        })
+      } else {
+        toast.error("Failed to save progress", {
+          description: errorMessage,
+        })
+      }
+      
+      // Don't move to next card if save failed - let user retry
+      // But we've already updated stats, so we'll continue anyway
     }
   }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top Bar */}
-      <div className="border-b border-border bg-card/50 backdrop-blur">
+      <header className="border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-muted-foreground">
-              Card {currentIndex + 1} of {cards.length}
+            <span className="text-sm font-medium text-muted-foreground" aria-live="polite" aria-atomic="true">
+              {t.cardOf} {currentIndex + 1} {language === 'es' ? 'de' : 'of'} {displayCards.length}
+              {isTranslating && <span className="ml-2 text-xs">({t.loading}...)</span>}
             </span>
-            <Button variant="ghost" size="icon" onClick={() => setExitDialog(true)} className="h-9 w-9">
-              <X className="h-5 w-5" />
-              <span className="sr-only">Exit study session</span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setExitDialog(true)} 
+              className="h-9 w-9"
+              aria-label={t.exitStudySession}
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+              <span className="sr-only">{t.exitStudySession}</span>
             </Button>
           </div>
-          <Progress value={progress} className="h-2" />
+          <Progress value={progress} className="h-2" aria-label={`Study progress: ${Math.round(progress)}% complete`} />
         </div>
-      </div>
+      </header>
 
       {/* Card Content */}
-      <div className="flex-1 flex items-center justify-center p-4">
+      <main className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-3xl">
           <Card
             className={`bg-card border-border shadow-2xl min-h-[400px] flex items-center justify-center transition-all ${
               flipping ? "opacity-0" : "opacity-100"
             }`}
+            role="region"
+            aria-label="Flashcard"
           >
             <CardContent className="p-12 text-center w-full">
               {!showAnswer ? (
                 <div className="space-y-8">
                   <div>
-                    <p className="text-sm uppercase tracking-wide text-muted-foreground mb-4">Question</p>
-                    <h3 className="text-3xl font-bold text-foreground leading-relaxed text-balance">
+                    <p className="text-sm uppercase tracking-wide text-muted-foreground mb-4" aria-hidden="true">{t.question}</p>
+                    <h2 className="text-3xl font-bold text-foreground leading-relaxed text-balance" id="card-question">
                       {currentCard?.question}
-                    </h3>
+                    </h2>
                   </div>
                   <Button
                     size="lg"
                     onClick={handleShowAnswer}
                     className="bg-primary hover:bg-primary/90 text-primary-foreground px-12"
+                    aria-label="Show answer to the question"
                   >
-                    Show Answer
+                    {t.showAnswer}
                   </Button>
                 </div>
               ) : (
                 <div className="space-y-8">
                   <div>
-                    <p className="text-sm uppercase tracking-wide text-muted-foreground mb-4">Answer</p>
-                    <p className="text-2xl text-foreground leading-relaxed text-pretty">{currentCard?.answer}</p>
+                    <p className="text-sm uppercase tracking-wide text-muted-foreground mb-4" aria-hidden="true">{t.answer}</p>
+                    <p className="text-2xl text-foreground leading-relaxed text-pretty" id="card-answer" aria-labelledby="card-question">
+                      {currentCard?.answer}
+                    </p>
                   </div>
                 </div>
               )}
@@ -142,70 +187,79 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
 
           {/* Rating Buttons - SM-2 5-point scale */}
           {showAnswer && (
-            <div className="mt-8 grid grid-cols-5 gap-2">
+            <div 
+              className="mt-8 grid grid-cols-5 gap-2"
+              role="group"
+              aria-label="Rate your recall of this card"
+            >
               <Button
                 size="lg"
                 onClick={() => handleRating("very_hard")}
+                onKeyDown={(e) => handleKeyDown(e, "very_hard")}
                 disabled={isSaving}
                 className="bg-red-600 hover:bg-red-700 text-white h-16 text-sm disabled:opacity-50"
-                title="Complete failure - card resets"
+                aria-label="Very Hard - Complete failure, card resets"
               >
-                {isSaving ? "..." : "Very Hard"}
+                {isSaving ? "..." : t.veryHard}
               </Button>
               <Button
                 size="lg"
                 onClick={() => handleRating("hard")}
+                onKeyDown={(e) => handleKeyDown(e, "hard")}
                 disabled={isSaving}
                 className="bg-orange-500 hover:bg-orange-600 text-white h-16 text-sm disabled:opacity-50"
-                title="Correct with serious difficulty"
+                aria-label="Hard - Correct with serious difficulty"
               >
-                {isSaving ? "..." : "Hard"}
+                {isSaving ? "..." : t.hard}
               </Button>
               <Button
                 size="lg"
                 onClick={() => handleRating("good")}
+                onKeyDown={(e) => handleKeyDown(e, "good")}
                 disabled={isSaving}
                 className="bg-yellow-500 hover:bg-yellow-600 text-white h-16 text-sm disabled:opacity-50"
-                title="Correct after hesitation"
+                aria-label="Good - Correct after hesitation"
               >
-                {isSaving ? "..." : "Good"}
+                {isSaving ? "..." : t.good}
               </Button>
               <Button
                 size="lg"
                 onClick={() => handleRating("easy")}
+                onKeyDown={(e) => handleKeyDown(e, "easy")}
                 disabled={isSaving}
                 className="bg-green-500 hover:bg-green-600 text-white h-16 text-sm disabled:opacity-50"
-                title="Perfect recall"
+                aria-label="Easy - Perfect recall"
               >
-                {isSaving ? "..." : "Easy"}
+                {isSaving ? "..." : t.easy}
               </Button>
               <Button
                 size="lg"
                 onClick={() => handleRating("too_easy")}
+                onKeyDown={(e) => handleKeyDown(e, "too_easy")}
                 disabled={isSaving}
                 className="bg-emerald-500 hover:bg-emerald-600 text-white h-16 text-sm disabled:opacity-50"
-                title="Too easy - perfect recall"
+                aria-label="Too Easy - Perfect recall, too easy"
               >
-                {isSaving ? "..." : "Too Easy"}
+                {isSaving ? "..." : t.tooEasy}
               </Button>
             </div>
           )}
         </div>
-      </div>
+      </main>
 
       {/* Exit Confirmation Dialog */}
       <Dialog open={exitDialog} onOpenChange={setExitDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Exit Study Session?</DialogTitle>
-            <DialogDescription>Cards you've already reviewed have been saved. You can continue studying later.</DialogDescription>
+            <DialogTitle>{t.exitStudySessionTitle}</DialogTitle>
+            <DialogDescription>{t.exitStudySessionDescription}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setExitDialog(false)}>
-              Continue Studying
+            <Button variant="outline" onClick={() => setExitDialog(false)} aria-label="Continue studying session">
+              {t.continueStudying}
             </Button>
-            <Button variant="destructive" onClick={onExit}>
-              Exit
+            <Button variant="destructive" onClick={onExit} aria-label="Exit study session and return to dashboard">
+              {t.exit}
             </Button>
           </DialogFooter>
         </DialogContent>

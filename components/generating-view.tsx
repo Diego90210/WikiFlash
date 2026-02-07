@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { X, Sparkles } from "lucide-react"
+import { useTranslations } from "@/lib/language/use-translations"
 
 type GeneratingViewProps = {
   topic: string
@@ -10,6 +11,7 @@ type GeneratingViewProps = {
 }
 
 export function GeneratingView({ topic, cardCount, onCancel }: GeneratingViewProps) {
+  const t = useTranslations()
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
       {onCancel && (
@@ -18,7 +20,7 @@ export function GeneratingView({ topic, cardCount, onCancel }: GeneratingViewPro
           size="icon"
           onClick={onCancel}
           className="absolute top-4 right-4 z-50"
-          aria-label="Cancel generation"
+          aria-label={t.cancelGeneration}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -52,10 +54,10 @@ export function GeneratingView({ topic, cardCount, onCancel }: GeneratingViewPro
         
         <div className="space-y-3">
           <h2 className="text-3xl font-bold text-foreground text-balance">
-            Generating {cardCount} flashcards
+            {t.generating} {cardCount} {t.cards}
           </h2>
           <p className="text-lg text-muted-foreground">
-            about <span className="font-semibold text-primary">{topic}</span>
+            {t.about} <span className="font-semibold text-primary">{topic}</span>
           </p>
           <div className="flex items-center justify-center gap-2 pt-2">
             <div className="h-1 w-1 rounded-full bg-primary animate-pulse" style={{ animationDelay: '0s' }} />

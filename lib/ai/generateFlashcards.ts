@@ -19,12 +19,14 @@ const INITIAL_RETRY_DELAY = 1000 // 1 second
  * @param content - Wikipedia article content
  * @param count - Number of flashcards to generate
  * @param topic - Topic/title of the article
+ * @param language - Language for flashcards ('en' or 'es', default: 'en')
  * @returns Array of flashcards
  */
 export async function generateFlashcards(
   content: string,
   count: number,
-  topic: string
+  topic: string,
+  language: 'en' | 'es' = 'en'
 ): Promise<Flashcard[]> {
   if (!content || !content.trim()) {
     throw new Error('Content is required for flashcard generation')
@@ -43,9 +45,10 @@ export async function generateFlashcards(
     content: content.trim(),
     topic,
     count,
+    language,
   }
 
-  const systemPrompt = getSystemPrompt()
+  const systemPrompt = getSystemPrompt(language)
   const userPrompt = getUserPrompt(promptInput)
 
   let lastError: Error | null = null

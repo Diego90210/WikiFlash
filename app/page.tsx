@@ -1,12 +1,17 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { DashboardView } from "@/components/dashboard-view"
 import { GeneratingView } from "@/components/generating-view"
 import { CardPreviewView } from "@/components/card-preview-view"
 import { StudySessionView } from "@/components/study-session-view"
 import { SessionCompleteView } from "@/components/session-complete-view"
+import { ErrorBoundary } from "@/components/error-boundary"
+import { useLanguage } from "@/lib/language/context"
+import { useTranslations } from "@/lib/language/use-translations"
 import { getSessionId } from "@/lib/session"
+import { storeDeckLanguage, getDeckLanguage } from "@/lib/deck-language-storage"
 import { getDecks, createDeck, updateDeck, deleteDeck, updateDeckLastStudied } from "@/lib/supabase/decks"
 import { getDueCards, getNewCards, getDueCardsCount, getNextReviewDate } from "@/lib/supabase/cards"
 
@@ -17,6 +22,7 @@ export type Deck = {
   cardCount: number
   dueCount: number
   lastStudied?: Date
+  language?: 'en' | 'es' // Language the deck was created in
 }
 
 export type Flashcard = {
@@ -32,6 +38,8 @@ export type Flashcard = {
 type View = "dashboard" | "generating" | "preview" | "study" | "complete"
 
 export default function Home() {
+  const { language } = useLanguage()
+  const t = useTranslations()
   const [currentView, setCurrentView] = useState<View>("dashboard")
   const [decks, setDecks] = useState<Deck[]>([])
   const [isLoadingDecks, setIsLoadingDecks] = useState(true)
@@ -52,7 +60,19 @@ export default function Home() {
         setDecks(fetchedDecks)
       } catch (error) {
         console.error("Failed to load decks:", error)
-        // Continue with empty decks array
+        const errorMessage = error instanceof Error ? error.message : "Unknown error"
+        
+        // Check if it's a network error
+        if (errorMessage.includes("fetch") || errorMessage.includes("network") || errorMessage.includes("Failed to fetch")) {
+          toast.error("Network error", {
+            description: "Unable to connect to the server. Please check your internet connection and try again.",
+          })
+        } else {
+          toast.error("Failed to load decks", {
+            description: "We couldn't load your flashcard decks. Please refresh the page to try again.",
+          })
+        }
+        // Continue with empty decks array so user can still use the app
       } finally {
         setIsLoadingDecks(false)
       }
@@ -60,9 +80,11 @@ export default function Home() {
     loadDecks()
   }, [])
 
-  const handleCreateDeck = async (topic: string, cardCount: number, content?: string) => {
+  const handleCreateDeck = async (topic: string, cardCount: number, content?: string, deckLanguage: 'en' | 'es' = 'en') => {
     if (!content) {
-      alert('No content available. Please try again.')
+      toast.error("No content available", {
+        description: "We couldn't fetch the Wikipedia content. Please try again with a different topic or URL.",
+      })
       return
     }
 
@@ -82,12 +104,29 @@ export default function Home() {
           content,
           count: cardCount,
           topic,
+          language,
         }),
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.error || `Failed to generate flashcards: ${response.statusText}`
+        let errorMessage = "Failed to generate flashcards"
+        
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          // If JSON parsing fails, use status text
+          if (response.status === 429) {
+            errorMessage = "Too many requests. Please wait a moment and try again."
+          } else if (response.status >= 500) {
+            errorMessage = "Server error. Please try again in a moment."
+          } else if (response.status === 400) {
+            errorMessage = "Invalid request. Please check your input and try again."
+          } else {
+            errorMessage = `Failed to generate flashcards: ${response.statusText}`
+          }
+        }
+        
         throw new Error(errorMessage)
       }
 
@@ -112,12 +151,28 @@ export default function Home() {
         topic: "Generated",
         cardCount: newCards.length,
         dueCount: newCards.length,
+        language: deckLanguage,
       })
       setCurrentView("preview")
     } catch (error) {
       console.error('Error generating flashcards:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate flashcards. Please try again.'
-      alert(errorMessage)
+      
+      // Check for network errors
+      if (errorMessage.includes("fetch") || errorMessage.includes("network") || errorMessage.includes("Failed to fetch")) {
+        toast.error("Network error", {
+          description: "Unable to connect to the server. Please check your internet connection and try again.",
+        })
+      } else if (errorMessage.includes("Rate limit") || errorMessage.includes("429")) {
+        toast.error("Rate limit exceeded", {
+          description: "Too many requests. Please wait a moment before trying again.",
+        })
+      } else {
+        toast.error("Failed to generate flashcards", {
+          description: errorMessage,
+        })
+      }
+      
       setCurrentView("dashboard")
     }
   }
@@ -136,13 +191,28 @@ export default function Home() {
         currentCards
       )
       
+      // Store the deck language
+      if (currentDeck.language) {
+        storeDeckLanguage(savedDeck.id, currentDeck.language)
+      }
+      
       // Refresh decks list
       const updatedDecks = await getDecks(sessionId)
       setDecks(updatedDecks)
       setCurrentView("dashboard")
     } catch (error) {
       console.error("Failed to save deck:", error)
-      alert(`Failed to save deck: ${error instanceof Error ? error.message : "Unknown error"}`)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      
+      if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
+        toast.error("Network error", {
+          description: "Unable to save your deck. Please check your internet connection and try again.",
+        })
+      } else {
+        toast.error("Failed to save deck", {
+          description: errorMessage,
+        })
+      }
     }
   }
 
@@ -161,7 +231,10 @@ export default function Home() {
           ? new Date(nextReviewDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
           : 'No upcoming reviews'
         
-        alert(`No cards due right now!\n\nYou've reviewed everything scheduled for today.\n\nCome back tomorrow!\nNext review: ${nextReviewText}`)
+        toast.info(t.allCaughtUp, {
+          description: `${t.allCaughtUpMessage} ${t.comeBackTomorrow} ${t.nextReview} ${nextReviewText}`,
+          duration: 5000,
+        })
         return
       }
 
@@ -171,10 +244,17 @@ export default function Home() {
       
       // Optionally add new cards (never studied) - these CAN be shuffled
       // Limit to 5 new cards per session to avoid overwhelming the user
-      const newCards = await getNewCards(deck.id, 5)
+      const allNewCards = await getNewCards(deck.id, 5)
+      
+      // Filter out cards that are already in dueCards to avoid duplicates
+      // (New cards with next_review = today appear in both lists)
+      const dueCardIds = new Set(dueCards.map(card => card.id))
+      const newCards = allNewCards.filter(card => !dueCardIds.has(card.id))
       
       if (dueCards.length === 0 && newCards.length === 0) {
-        alert('No cards are due for review in this deck!')
+        toast.info(t.noCardsAvailable, {
+          description: t.noCardsDue,
+        })
         return
       }
 
@@ -197,7 +277,17 @@ export default function Home() {
       setCurrentView("study")
     } catch (error) {
       console.error("Failed to load cards:", error)
-      alert(`Failed to load cards: ${error instanceof Error ? error.message : "Unknown error"}`)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      
+      if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
+        toast.error("Network error", {
+          description: "Unable to load cards. Please check your internet connection and try again.",
+        })
+      } else {
+        toast.error("Failed to load cards", {
+          description: errorMessage,
+        })
+      }
     }
   }
 
@@ -220,7 +310,11 @@ export default function Home() {
         }
       } catch (error) {
         console.error("Failed to update deck last studied:", error)
-        // Don't block the user, just log the error
+        // Don't block the user, but show a non-intrusive error
+        toast.error("Failed to update progress", {
+          description: "Your study progress was saved, but we couldn't update the timestamp. This won't affect your learning.",
+          duration: 3000,
+        })
       }
     }
     
@@ -236,7 +330,17 @@ export default function Home() {
       setDecks(updatedDecks)
     } catch (error) {
       console.error("Failed to delete deck:", error)
-      alert(`Failed to delete deck: ${error instanceof Error ? error.message : "Unknown error"}`)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      
+      if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
+        toast.error("Network error", {
+          description: "Unable to delete the deck. Please check your internet connection and try again.",
+        })
+      } else {
+        toast.error("Failed to delete deck", {
+          description: errorMessage,
+        })
+      }
     }
   }
 
@@ -249,7 +353,17 @@ export default function Home() {
       setDecks(updatedDecks)
     } catch (error) {
       console.error("Failed to rename deck:", error)
-      alert(`Failed to rename deck: ${error instanceof Error ? error.message : "Unknown error"}`)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      
+      if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
+        toast.error("Network error", {
+          description: "Unable to rename the deck. Please check your internet connection and try again.",
+        })
+      } else {
+        toast.error("Failed to rename deck", {
+          description: errorMessage,
+        })
+      }
     }
   }
 
@@ -265,8 +379,9 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen">
-      {currentView === "dashboard" && (
+    <ErrorBoundary>
+      <main className="min-h-screen">
+        {currentView === "dashboard" && (
         <DashboardView
           decks={decks}
           onCreateDeck={handleCreateDeck}
@@ -314,14 +429,18 @@ export default function Home() {
               const nextReviewDate = await getNextReviewDate(currentDeck.id)
               const nextReviewText = nextReviewDate 
                 ? new Date(nextReviewDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                : 'No upcoming reviews'
-              alert(`No cards due right now!\n\nYou've reviewed everything scheduled for today.\n\nCome back tomorrow!\nNext review: ${nextReviewText}`)
+                : t.noUpcomingReviews
+              toast.info(t.allCaughtUp, {
+                description: `${t.allCaughtUpMessage} ${t.comeBackTomorrow} ${t.nextReview} ${nextReviewText}`,
+                duration: 5000,
+              })
               return
             }
             handleStartStudy(currentDeck)
           }}
         />
       )}
-    </main>
+      </main>
+    </ErrorBoundary>
   )
 }
