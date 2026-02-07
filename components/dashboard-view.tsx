@@ -562,7 +562,7 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
         ) : (
           <>
             <div className="flex items-center justify-between mb-8">
-              <h2 className="text-3xl md:text-4xl font-bold text-foreground">Your Decks</h2>
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground">{t.yourDecks}</h2>
               <Button
                 onClick={() => setCreateDialog(true)}
                 size="lg"
@@ -805,8 +805,8 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
                       setCustomCardCount("")
                     }}
                     className={`w-20 h-11 rounded-xl font-semibold text-base transition-all duration-200 border-2 ${selectedCardCount === count && !customCardCount
-                        ? "bg-primary border-primary text-primary-foreground shadow-sm"
-                        : "bg-transparent border-muted text-foreground hover:border-primary/50 hover:scale-105"
+                      ? "bg-primary border-primary text-primary-foreground shadow-sm"
+                      : "bg-transparent border-muted text-foreground hover:border-primary/50 hover:scale-105"
                       }`}
                   >
                     {count}
