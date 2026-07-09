@@ -81,6 +81,7 @@ export function getSystemPrompt(language: 'en' | 'es' = 'en'): string {
 - Las respuestas deben ser de 1-2 oraciones MÁXIMO. Solo lo esencial, sin relleno.
 - Las preguntas deben hacer pensar, no solo recordar. Evita "¿Qué es X?" directas.
 - Cada pregunta debe conectar conceptos o exigir razonamiento.
+- NINGUNA pregunta puede repetir el mismo concepto o idea central — cada tarjeta debe cubrir un tema DIFERENTE.
 - Si el contenido no permite un tipo de pregunta (ej: artículo biográfico sin procesos), redistribuye entre los tipos que sí funcionen.
 - NO inventes información que no esté en el contenido.
 - JSON output ONLY, sin texto adicional.`
@@ -88,6 +89,7 @@ export function getSystemPrompt(language: 'en' | 'es' = 'en'): string {
 - Answers must be 1-2 sentences MAXIMUM. Essential information only, no filler.
 - Questions must make the learner think, not just recall. Avoid direct "What is X?" questions.
 - Each question should connect concepts or require reasoning.
+- NO two cards may cover the same concept — each card must be about a DIFFERENT topic.
 - If the content doesn't support a question type (e.g., biographical article without processes), redistribute among types that work.
 - Do NOT invent information not in the content.
 - JSON output ONLY, no additional text.`

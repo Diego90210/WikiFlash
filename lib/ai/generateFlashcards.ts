@@ -1,8 +1,9 @@
 /**
- * AI flashcard generation using Groq API
+ * AI flashcard generation — Groq primary, Gemini fallback, local last resort.
  */
 
 import { getSystemPrompt, getUserPrompt, type FlashcardPromptInput, type QuestionType, type GenerationProfile, isValidQuestionType } from './prompts'
+import { callGemini } from './gemini'
 
 export interface Flashcard {
   question: string
@@ -12,11 +13,10 @@ export interface Flashcard {
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MODEL = 'llama-3.3-70b-versatile'
-const FETCH_TIMEOUT_MS = 20_000 // 20 s — leaves room for the route's 25 s hard timeout
+const FETCH_TIMEOUT_MS = 20_000
 
 /**
- * Generate flashcards from Wikipedia content using Groq API.
- * Falls back to local extraction immediately on 429 or network failure.
+ * Generate flashcards: Groq → Gemini → local fallback.
  */
 export async function generateFlashcards(
   content: string,
@@ -29,12 +29,6 @@ export async function generateFlashcards(
   if (!content?.trim()) throw new Error('Content is required for flashcard generation')
   if (count < 1 || count > 50) throw new Error('Card count must be between 1 and 50')
 
-  const apiKey = process.env.GROQ_API_KEY
-  if (!apiKey) {
-    console.warn('No GROQ_API_KEY — using local fallback')
-    return generateFallbackFlashcards(content, count, topic, language)
-  }
-
   const promptInput: FlashcardPromptInput = {
     content: content.trim(),
     topic,
@@ -44,13 +38,29 @@ export async function generateFlashcards(
     profile,
   }
 
-  try {
-    return await callGroq(apiKey, promptInput, language)
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    console.warn('Groq unavailable, using local fallback. Reason:', msg)
-    return generateFallbackFlashcards(content, count, topic, language)
+  // 1. Try Groq
+  const groqKey = process.env.GROQ_API_KEY
+  if (groqKey) {
+    try {
+      return await callGroq(groqKey, promptInput, language)
+    } catch (error) {
+      console.warn('Groq failed:', error instanceof Error ? error.message : error)
+    }
   }
+
+  // 2. Try Gemini
+  const geminiKey = process.env.GEMINI_API_KEY
+  if (geminiKey) {
+    try {
+      return await callGemini(geminiKey, promptInput, language)
+    } catch (error) {
+      console.warn('Gemini failed:', error instanceof Error ? error.message : error)
+    }
+  }
+
+  // 3. Local fallback
+  console.warn('All AI providers unavailable — using local fallback')
+  return generateFallbackFlashcards(content, count, topic, language)
 }
 
 // ── Groq call (single attempt, hard timeout) ─────────────────────────────────
@@ -226,16 +236,27 @@ function normalizeForDedup(s: string): string {
     .trim()
 }
 
+// Strip common question starters to compare the "core" of the question
+function extractQuestionCore(q: string): string {
+  return q
+    .replace(/^(¿|)(qué|cómo|cuál|cuáles|por qué|dónde|quién|cuándo|cuánto|cuánta|cuántos|cuántas|en qué|de qué|con qué|para qué|what|how|which|where|who|when|why|how much|how many|in what|of what|with what|for what)\s+/i, '')
+    .replace(/\s+de\s+.+$/i, '') // remove "de X" suffix
+    .trim()
+}
+
 function deduplicateCards(cards: Flashcard[]): Flashcard[] {
-  const seen = new Set<string>()
+  const seen = new Map<string, string>() // core → original question
   const result: Flashcard[] = []
 
   for (const card of cards) {
-    const key = normalizeForDedup(card.question)
-    if (!seen.has(key)) {
-      seen.add(key)
-      result.push(card)
-    }
+    const norm = normalizeForDedup(card.question)
+    const core = extractQuestionCore(norm)
+
+    // Skip if we already have a question with the same core
+    if (seen.has(core)) continue
+
+    seen.set(core, card.question)
+    result.push(card)
   }
 
   return result

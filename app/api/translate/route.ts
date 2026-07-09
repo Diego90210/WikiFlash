@@ -1,8 +1,9 @@
 /**
- * API route for translating text using Groq
+ * API route for translating text — Groq primary, Gemini fallback.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
+import { callGeminiTranslate } from '@/lib/ai/gemini'
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MODEL = 'llama-3.3-70b-versatile'
@@ -31,7 +32,6 @@ export async function POST(request: NextRequest) {
     if (!fromLang || !toLang) {
       return NextResponse.json({ error: 'Languages required' }, { status: 400 })
     }
-    // Strict allowlist — prevents prompt injection via language fields
     if (!VALID_LANGUAGES.includes(fromLang) || !VALID_LANGUAGES.includes(toLang)) {
       return NextResponse.json({ error: 'Unsupported language' }, { status: 400 })
     }
@@ -39,53 +39,74 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ translatedText: text })
     }
 
-    const apiKey = process.env.GROQ_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ translatedText: text })
-    }
-
     const langNames: Record<string, string> = { en: 'English', es: 'Spanish' }
     const fromName = langNames[fromLang]
     const toName = langNames[toLang]
 
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS)
-
-    let response: Response
-    try {
-      response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages: [
-            { role: 'system', content: `You are a translator. Translate from ${fromName} to ${toName}. Return ONLY the translated text, no explanations, no quotes, no formatting.` },
-            { role: 'user', content: text },
-          ],
-          temperature: 0.3,
-          max_tokens: 2000,
-        }),
-      })
-    } finally {
-      clearTimeout(timer)
+    // 1. Try Groq
+    const groqKey = process.env.GROQ_API_KEY
+    if (groqKey) {
+      try {
+        const translated = await callGroqTranslate(groqKey, text, fromName, toName)
+        if (translated) return NextResponse.json({ translatedText: translated })
+      } catch { /* fall through to Gemini */ }
     }
 
-    if (!response.ok) {
-      return NextResponse.json({ translatedText: text })
+    // 2. Try Gemini
+    const geminiKey = process.env.GEMINI_API_KEY
+    if (geminiKey) {
+      try {
+        const translated = await callGeminiTranslate(geminiKey, text, fromName, toName)
+        if (translated) return NextResponse.json({ translatedText: translated })
+      } catch { /* fall through to original text */ }
     }
 
-    const data = await response.json()
-    const translated = data.choices?.[0]?.message?.content?.trim()
-
-    return NextResponse.json({ translatedText: translated || text })
+    // 3. Return original text
+    return NextResponse.json({ translatedText: text })
   } catch (error) {
     console.error('Translation error:', error instanceof Error ? error.message : error)
     const body = await request.json().catch(() => ({}))
     return NextResponse.json({ translatedText: body.text || '' })
   }
+}
+
+// ── Groq translation helper ────────────────────────────────────────────────
+
+async function callGroqTranslate(
+  apiKey: string,
+  text: string,
+  fromName: string,
+  toName: string
+): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS)
+
+  let response: Response
+  try {
+    response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: `You are a translator. Translate from ${fromName} to ${toName}. Return ONLY the translated text, no explanations, no quotes, no formatting.` },
+          { role: 'user', content: text },
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+      }),
+    })
+  } finally {
+    clearTimeout(timer)
+  }
+
+  if (!response.ok) return null
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content?.trim() ?? null
 }
 
