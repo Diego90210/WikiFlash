@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -18,23 +18,27 @@ import { useTranslations } from "@/lib/language/use-translations"
 import { useLanguage } from "@/lib/language/context"
 import { useCardTranslation } from "@/lib/translation/use-card-translation"
 import type { Deck, Flashcard } from "@/app/page"
+import type { QuestionType } from "@/lib/ai/prompts"
 import { updateCard as updateCardInDB } from "@/lib/supabase/cards"
 import { updateCard, mapRatingToQuality } from "@/lib/spaced-repetition/sm2"
+import { saveStudySessionState, clearStudySessionState } from "@/lib/study-session-storage"
 
 type StudySessionViewProps = {
   deck: Deck | null
   cards: Flashcard[]
   onComplete: (stats: { very_hard: number; hard: number; good: number; easy: number; too_easy: number }) => void
   onExit: () => void
+  initialIndex?: number
+  initialStats?: { very_hard: number; hard: number; good: number; easy: number; too_easy: number }
 }
 
-export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessionViewProps) {
+export function StudySessionView({ deck, cards, onComplete, onExit, initialIndex = 0, initialStats = { very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 } }: StudySessionViewProps) {
   const t = useTranslations()
   const { language } = useLanguage()
   const { translatedCards, isTranslating } = useCardTranslation(cards, deck?.language)
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const [showAnswer, setShowAnswer] = useState(false)
-  const [stats, setStats] = useState({ very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 })
+  const [stats, setStats] = useState(initialStats)
   const [exitDialog, setExitDialog] = useState(false)
   const [flipping, setFlipping] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -44,6 +48,7 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
   const currentCard = displayCards[currentIndex]
   const progress = ((currentIndex + 1) / displayCards.length) * 100
 
+  
   const handleShowAnswer = () => {
     setFlipping(true)
     setTimeout(() => {
@@ -57,6 +62,21 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
       e.preventDefault()
       handleRating(rating)
     }
+  }
+
+  const handleExitWithProgress = () => {
+    if (deck && displayCards.length > 0) {
+      // Save the current session state
+      saveStudySessionState({
+        deckId: deck.id,
+        currentCardIndex: currentIndex,
+        totalCards: displayCards.length,
+        stats: stats,
+        cardIds: displayCards.map(card => card.id),
+        timestamp: Date.now()
+      })
+    }
+    onExit()
   }
 
   const handleRating = async (rating: "very_hard" | "hard" | "good" | "easy" | "too_easy") => {
@@ -96,6 +116,8 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
         }, 150)
       } else {
         setIsSaving(false)
+        // Clear saved session state when completing normally
+        clearStudySessionState()
         onComplete(newStats)
       }
     } catch (error) {
@@ -158,6 +180,21 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
               {!showAnswer ? (
                 <div className="space-y-8">
                   <div>
+                    {currentCard?.question_type && (
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium mb-4 ${
+                        currentCard.question_type === 'recall' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                        : currentCard.question_type === 'comparison' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                        : currentCard.question_type === 'causal' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+                        : currentCard.question_type === 'socratic' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                      }`}>
+                        {currentCard.question_type === 'recall' ? t.typeRecall
+                          : currentCard.question_type === 'comparison' ? t.typeComparison
+                          : currentCard.question_type === 'causal' ? t.typeCausal
+                          : currentCard.question_type === 'socratic' ? t.typeSocratic
+                          : t.typePractical}
+                      </span>
+                    )}
                     <p className="text-sm uppercase tracking-wide text-muted-foreground mb-4" aria-hidden="true">{t.question}</p>
                     <h2 className="text-3xl font-bold text-foreground leading-relaxed text-balance" id="card-question">
                       {currentCard?.question}
@@ -258,7 +295,7 @@ export function StudySessionView({ deck, cards, onComplete, onExit }: StudySessi
             <Button variant="outline" onClick={() => setExitDialog(false)} aria-label="Continue studying session">
               {t.continueStudying}
             </Button>
-            <Button variant="destructive" onClick={onExit} aria-label="Exit study session and return to dashboard">
+            <Button variant="destructive" onClick={handleExitWithProgress} aria-label="Exit study session and return to dashboard">
               {t.exit}
             </Button>
           </DialogFooter>

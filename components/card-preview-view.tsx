@@ -25,9 +25,31 @@ type CardPreviewViewProps = {
   onEditCard: (cardId: string, question: string, answer: string) => void
   onDeleteCard: (cardId: string) => void
   onRegenerate: () => void
+  isSaving?: boolean
 }
 
-export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard, onRegenerate }: CardPreviewViewProps) {
+const TYPE_ORDER = ['recall', 'comparison', 'causal', 'socratic', 'practical'] as const
+
+const TYPE_COLORS: Record<string, string> = {
+  recall: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  comparison: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  causal: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  socratic: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+  practical: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+}
+
+function getTypeLabel(type: string, t: ReturnType<typeof useTranslations>): string {
+  switch (type) {
+    case 'recall': return t.typeRecall
+    case 'comparison': return t.typeComparison
+    case 'causal': return t.typeCausal
+    case 'socratic': return t.typeSocratic
+    case 'practical': return t.typePractical
+    default: return type
+  }
+}
+
+export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard, onRegenerate, isSaving = false }: CardPreviewViewProps) {
   const t = useTranslations()
   const [editDialog, setEditDialog] = useState<{ open: boolean; card: Flashcard | null }>({
     open: false,
@@ -42,6 +64,62 @@ export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard,
       setEditDialog({ open: false, card: null })
     }
   }
+
+  // Group cards by type for visual organization
+  const grouped = new Map<string, Flashcard[]>()
+  for (const card of cards) {
+    const type = card.question_type || 'recall'
+    if (!grouped.has(type)) grouped.set(type, [])
+    grouped.get(type)!.push(card)
+  }
+  const hasMultipleTypes = grouped.size > 1
+
+  const renderCard = (card: Flashcard) => (
+    <Card key={card.id} className="bg-card border-border shadow-sm hover:shadow-md transition-shadow group">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-sm font-medium text-foreground leading-relaxed text-balance">
+            {card.question}
+          </CardTitle>
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => {
+                setEditDialog({ open: true, card })
+                setEditQuestion(card.question)
+                setEditAnswer(card.answer)
+              }}
+              aria-label={`${t.editCard}: ${card.question}`}
+            >
+              <Edit2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="sr-only">{t.editCard}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive hover:text-destructive"
+              onClick={() => onDeleteCard(card.id)}
+              aria-label={`${t.deleteCard}: ${card.question}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="sr-only">{t.deleteCard}</span>
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-2 mb-2">
+          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[card.question_type || 'recall'] || TYPE_COLORS.recall}`}>
+            {getTypeLabel(card.question_type || 'recall', t)}
+          </span>
+          <span className="text-xs text-muted-foreground">{grouped.get(card.question_type || 'recall')?.indexOf(card) !== undefined ? `${(grouped.get(card.question_type || 'recall')?.indexOf(card) ?? 0) + 1}/${grouped.get(card.question_type || 'recall')?.length}` : ''}</span>
+        </div>
+        <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">{card.answer}</p>
+      </CardContent>
+    </Card>
+  )
 
   return (
     <main className="min-h-screen bg-background">
@@ -58,48 +136,27 @@ export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard,
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {cards.map((card) => (
-            <Card key={card.id} className="bg-card border-border shadow-sm hover:shadow-md transition-shadow group">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-sm font-medium text-foreground leading-relaxed text-balance">
-                    {card.question}
-                  </CardTitle>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => {
-                        setEditDialog({ open: true, card })
-                        setEditQuestion(card.question)
-                        setEditAnswer(card.answer)
-                      }}
-                      aria-label={`${t.editCard}: ${card.question}`}
-                    >
-                      <Edit2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span className="sr-only">{t.editCard}</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => onDeleteCard(card.id)}
-                      aria-label={`${t.deleteCard}: ${card.question}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span className="sr-only">{t.deleteCard}</span>
-                    </Button>
-                  </div>
+        {hasMultipleTypes ? (
+          // Grouped by type
+          <div className="space-y-8 mb-8">
+            {TYPE_ORDER.filter(type => grouped.has(type)).map(type => (
+              <div key={type}>
+                <h3 className={`text-lg font-semibold mb-3 inline-flex items-center gap-2 px-3 py-1 rounded-full ${TYPE_COLORS[type]}`}>
+                  {getTypeLabel(type, t)}
+                  <span className="text-xs opacity-70">({grouped.get(type)!.length})</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {grouped.get(type)!.map(renderCard)}
                 </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">{card.answer}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // Flat grid (all same type)
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            {cards.map(renderCard)}
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button 
@@ -115,11 +172,21 @@ export function CardPreviewView({ deck, cards, onSave, onEditCard, onDeleteCard,
           <Button
             size="lg"
             onClick={onSave}
+            disabled={isSaving}
             className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
             aria-label={t.saveDeck}
           >
-            <Save className="mr-2 h-4 w-4" aria-hidden="true" />
-            {t.saveDeck}
+            {isSaving ? (
+              <>
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                {t.loading}
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" aria-hidden="true" />
+                {t.saveDeck}
+              </>
+            )}
           </Button>
         </div>
       </div>

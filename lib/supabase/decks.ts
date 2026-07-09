@@ -20,6 +20,7 @@ export interface CardRow {
   deck_id: string
   question: string
   answer: string
+  question_type: string
   ease_factor: number
   interval: number
   repetitions: number
@@ -57,6 +58,7 @@ export async function createDeck(
       deck_id: deckData.id,
       question: card.question,
       answer: card.answer,
+      question_type: card.question_type || 'recall',
       ease_factor: 2.5, // Default ease factor for SM-2
       interval: 0, // New card
       repetitions: 0,

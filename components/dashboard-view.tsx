@@ -24,10 +24,12 @@ import { useState, useEffect, useRef } from "react"
 import { detectInputType, extractPageTitleFromUrl, extractLanguageAndTitleFromUrl } from "@/lib/wikipedia/detectInputType"
 import { searchWikipedia, getPageHtml, type WikipediaSearchResult } from "@/lib/wikipedia/api"
 import { parseWikipediaContent } from "@/lib/wikipedia/parser"
+import { findBestArticle, type Language } from "@/lib/wikipedia/cross-language"
+import type { GenerationProfile } from "@/lib/ai/prompts"
 
 type DashboardViewProps = {
   decks: Deck[]
-  onCreateDeck: (topic: string, cardCount: number, content?: string, deckLanguage?: 'en' | 'es') => void
+  onCreateDeck: (topic: string, cardCount: number, content?: string, deckLanguage?: 'en' | 'es', sourceLanguage?: 'en' | 'es', profile?: GenerationProfile) => void
   onStudyDeck: (deck: Deck) => void
   onDeleteDeck: (id: string) => void
   onRenameDeck: (id: string, newName: string) => void
@@ -57,6 +59,8 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<WikipediaSearchResult | null>(null)
+  const [generationProfile, setGenerationProfile] = useState<GenerationProfile>('balanced')
   const inputRef = useRef<HTMLInputElement>(null)
   const suggestionsRef = useRef<HTMLDivElement>(null)
   const justSelectedRef = useRef(false)
@@ -124,6 +128,7 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
   const handleSuggestionSelect = (suggestion: WikipediaSearchResult) => {
     justSelectedRef.current = true
     setWikipediaTopic(suggestion.title)
+    setSelectedSuggestion(suggestion)
     setSuggestions([])
     setShowSuggestions(false)
     setSelectedSuggestionIndex(-1)
@@ -227,40 +232,56 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
         // Small delay to show success message
         await new Promise(resolve => setTimeout(resolve, 500))
       } else {
-        // Search for topic
-        setLoadingStatus(`${t.searchingWikipedia} "${finalTopic}"...`)
-        const searchResults = await searchWikipedia(finalTopic, articleLanguage)
-
-        if (searchResults.length === 0) {
-          throw new Error(`No Wikipedia articles found for "${finalTopic}". Please try a different topic.`)
+        // If user explicitly selected a suggestion, use it directly
+        if (selectedSuggestion) {
+          setLoadingStatus(`${t.loadingArticle} ${selectedSuggestion.title}...`)
+          const html = await getPageHtml(selectedSuggestion.title, articleLanguage)
+          setLoadingStatus(t.parsingArticleContent)
+          const parsed = parseWikipediaContent(html, selectedSuggestion.title)
+          content = parsed.text
+          finalTopic = selectedSuggestion.title
+          setFoundArticle(selectedSuggestion.title)
+          articleLanguage = articleLanguage
+        } else {
+          // Cross-language: search both EN and ES, pick the best article
+          setLoadingStatus(`${t.searchingWikipedia} "${finalTopic}"...`)
+          const result = await findBestArticle(finalTopic, language)
+          content = result.content
+          finalTopic = result.title
+          articleLanguage = result.sourceLanguage
+          setFoundArticle(result.title)
         }
 
-        // Use the first search result
-        const firstResult = searchResults[0]
-        finalTopic = firstResult.title
-        setFoundArticle(firstResult.title)
-
-        // Fetch page HTML
-        setLoadingStatus(`${t.loadingArticle} ${firstResult.title}...`)
-        const html = await getPageHtml(firstResult.title, articleLanguage)
-
-        // Parse content
-        setLoadingStatus(t.parsingArticleContent)
-        const parsed = parseWikipediaContent(html, firstResult.title)
-        content = parsed.text
-
         setLoadingStatus(t.articleLoadedSuccessfully)
-
-        // Small delay to show success message
         await new Promise(resolve => setTimeout(resolve, 500))
       }
+
+      // Validate content before proceeding
+      if (!content || content.trim().length === 0) {
+        throw new Error('No content was extracted from the Wikipedia article. Please try a different article.')
+      }
+
+      // Trim content to prevent timeout issues
+      const maxContentLength = 8000
+      const originalContentLength = content.length
+      if (content.length > maxContentLength) {
+        content = content.substring(0, maxContentLength) + '...'
+        console.log('Content trimmed from', originalContentLength, 'to', content.length, 'characters')
+      }
+
+      console.log('Content extracted successfully:', { 
+        contentLength: content.length, 
+        originalContentLength,
+        contentPreview: content.substring(0, 200) + '...',
+        topic: finalTopic 
+      })
 
       // Call onGenerate with the content
       // Use custom count only if it's a valid non-empty number, otherwise use selected count
       const count = customCardCount && customCardCount.trim() && !isNaN(Number.parseInt(customCardCount))
         ? Number.parseInt(customCardCount)
         : selectedCardCount
-      onCreateDeck(finalTopic, count, content, articleLanguage)
+      onCreateDeck(finalTopic, count, content, language, articleLanguage, generationProfile)
       setCreateDialog(false)
       setWikipediaTopic("")
       setCustomCardCount("")
@@ -268,6 +289,7 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
       setIsLoading(false)
       setLoadingStatus("")
       setFoundArticle(null)
+      setSelectedSuggestion(null)
     } catch (error) {
       console.error("Error fetching Wikipedia content:", error)
       let errorMessage = error instanceof Error ? error.message : "Failed to fetch Wikipedia content. Please try again."
@@ -689,12 +711,14 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
               setWikipediaTopic("")
               setCustomCardCount("")
               setSelectedCardCount(20)
+              setGenerationProfile('balanced')
               setIsLoading(false)
               setLoadingStatus("")
               setFoundArticle(null)
               setSuggestions([])
               setShowSuggestions(false)
               setSelectedSuggestionIndex(-1)
+              setSelectedSuggestion(null)
             }
           }
         }}
@@ -718,6 +742,7 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
                   value={wikipediaTopic}
                   onChange={(e) => {
                     setWikipediaTopic(e.target.value)
+                    setSelectedSuggestion(null) // Reset selection when user types
                     // Show suggestions when user types (will be controlled by useEffect based on results)
                   }}
                   onFocus={() => {
@@ -832,6 +857,32 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
                     className="w-24 h-11 text-base rounded-xl border-2 focus-visible:ring-primary"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Generation Profile Selector */}
+            <div className="space-y-3">
+              <Label className="text-base font-medium">{t.generationProfile}</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { key: 'quick_review' as const, label: t.profileQuickReview, desc: t.profileQuickReviewDesc },
+                  { key: 'balanced' as const, label: t.profileBalanced, desc: t.profileBalancedDesc },
+                  { key: 'deep_understanding' as const, label: t.profileDeepUnderstanding, desc: t.profileDeepUnderstandingDesc },
+                ]).map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setGenerationProfile(p.key)}
+                    className={`text-left p-3 rounded-xl border-2 transition-all duration-200 ${
+                      generationProfile === p.key
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-muted hover:border-primary/50 hover:scale-[1.02]"
+                    }`}
+                  >
+                    <div className="font-medium text-sm">{p.label}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{p.desc}</div>
+                  </button>
+                ))}
               </div>
             </div>
           </div>

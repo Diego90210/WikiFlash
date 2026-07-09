@@ -14,6 +14,8 @@ import { getSessionId } from "@/lib/session"
 import { storeDeckLanguage, getDeckLanguage } from "@/lib/deck-language-storage"
 import { getDecks, createDeck, updateDeck, deleteDeck, updateDeckLastStudied } from "@/lib/supabase/decks"
 import { getDueCards, getNewCards, getDueCardsCount, getNextReviewDate } from "@/lib/supabase/cards"
+import { getStudySessionState, clearStudySessionState } from "@/lib/study-session-storage"
+import type { GenerationProfile } from "@/lib/ai/prompts"
 
 export type Deck = {
   id: string
@@ -29,6 +31,7 @@ export type Flashcard = {
   id: string
   question: string
   answer: string
+  question_type?: string
   ease_factor?: number
   interval?: number
   repetitions?: number
@@ -49,6 +52,9 @@ export default function Home() {
   const [generatingCardCount, setGeneratingCardCount] = useState(20)
   const [wikipediaContent, setWikipediaContent] = useState<string | undefined>(undefined)
   const [studyStats, setStudyStats] = useState({ very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 })
+  const [isSavingDeck, setIsSavingDeck] = useState(false)
+  const [initialStudyIndex, setInitialStudyIndex] = useState(0)
+  const [initialStudyStats, setInitialStudyStats] = useState({ very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 })
 
   // Load decks from Supabase on mount
   useEffect(() => {
@@ -80,7 +86,7 @@ export default function Home() {
     loadDecks()
   }, [])
 
-  const handleCreateDeck = async (topic: string, cardCount: number, content?: string, deckLanguage: 'en' | 'es' = 'en') => {
+  const handleCreateDeck = async (topic: string, cardCount: number, content?: string, deckLanguage: 'en' | 'es' = 'en', sourceLanguage?: 'en' | 'es', profile?: GenerationProfile) => {
     if (!content) {
       toast.error("No content available", {
         description: "We couldn't fetch the Wikipedia content. Please try again with a different topic or URL.",
@@ -94,8 +100,16 @@ export default function Home() {
     setCurrentView("generating")
 
     try {
+      // Debug: Log what we're sending to the API
+      console.log('Generating flashcards with:', { content: content?.substring(0, 100) + '...', count: cardCount, topic, language, sourceLanguage })
+      
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 30000) // 30 second timeout
+      })
+      
       // Call API route to generate flashcards
-      const response = await fetch('/api/generate-flashcards', {
+      const fetchPromise = fetch('/api/generate-flashcards', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -105,8 +119,13 @@ export default function Home() {
           count: cardCount,
           topic,
           language,
+          sourceLanguage,
+          profile,
         }),
       })
+      
+      // Race the fetch against the timeout
+      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response
 
       if (!response.ok) {
         let errorMessage = "Failed to generate flashcards"
@@ -138,10 +157,11 @@ export default function Home() {
       }
 
       // Convert to our Flashcard format with IDs
-      const newCards: Flashcard[] = generatedFlashcards.map((card: { question: string; answer: string }, index: number) => ({
+      const newCards: Flashcard[] = generatedFlashcards.map((card: { question: string; answer: string; type?: string }, index: number) => ({
         id: `card-${Date.now()}-${index}`,
         question: card.question,
         answer: card.answer,
+        question_type: card.type || 'recall',
       }))
 
       setCurrentCards(newCards)
@@ -158,14 +178,19 @@ export default function Home() {
       console.error('Error generating flashcards:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate flashcards. Please try again.'
       
-      // Check for network errors
-      if (errorMessage.includes("fetch") || errorMessage.includes("network") || errorMessage.includes("Failed to fetch")) {
+      // Check for timeout specifically
+      if (errorMessage.includes("timeout") || errorMessage.includes("Request timeout")) {
+        toast.error("Request timeout", {
+          description: "The request took too long to complete. Please try again with a smaller number of cards.",
+        })
+      } else if (errorMessage.includes("fetch") || errorMessage.includes("network") || errorMessage.includes("Failed to fetch")) {
         toast.error("Network error", {
           description: "Unable to connect to the server. Please check your internet connection and try again.",
         })
       } else if (errorMessage.includes("Rate limit") || errorMessage.includes("429")) {
         toast.error("Rate limit exceeded", {
-          description: "Too many requests. Please wait a moment before trying again.",
+          description: "API rate limit reached. Please wait a few minutes before trying again.",
+          duration: 6000,
         })
       } else {
         toast.error("Failed to generate flashcards", {
@@ -178,9 +203,11 @@ export default function Home() {
   }
 
   const handleSaveDeck = async () => {
-    if (!currentDeck || currentCards.length === 0) {
+    if (!currentDeck || currentCards.length === 0 || isSavingDeck) {
       return
     }
+
+    setIsSavingDeck(true)
 
     try {
       const sessionId = await getSessionId()
@@ -213,68 +240,134 @@ export default function Home() {
           description: errorMessage,
         })
       }
+    } finally {
+      setIsSavingDeck(false)
     }
   }
 
   const handleStartStudy = async (deck: Deck) => {
     setCurrentDeck(deck)
-    setStudyStats({ very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 })
+    
+    // Check for saved session state first
+    const savedSession = getStudySessionState(deck.id)
     
     try {
-      // STRICT SPACED REPETITION: Only show cards that are due today
-      const dueCount = await getDueCardsCount(deck.id)
+      let cards: Flashcard[] = []
+      let restoredIndex = 0
+      let restoredStats = { very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 }
       
-      if (dueCount === 0) {
-        // No cards due - show message with next review date
-        const nextReviewDate = await getNextReviewDate(deck.id)
-        const nextReviewText = nextReviewDate 
-          ? new Date(nextReviewDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          : 'No upcoming reviews'
+      if (savedSession) {
+        // Restore the saved session
+        restoredIndex = savedSession.currentCardIndex
+        restoredStats = savedSession.stats
         
-        toast.info(t.allCaughtUp, {
-          description: `${t.allCaughtUpMessage} ${t.comeBackTomorrow} ${t.nextReview} ${nextReviewText}`,
-          duration: 5000,
+        // Fetch the same cards that were in the saved session
+        const allCardRows = await getDueCards(deck.id)
+        const newCardRows = await getNewCards(deck.id, 5)
+        const dueCardIds = new Set(allCardRows.map(card => card.id))
+        const newCards = newCardRows.filter(card => !dueCardIds.has(card.id))
+        const allCardRowsCombined = [...allCardRows, ...newCards]
+        
+        // Convert to Flashcard format
+        const allCards = allCardRowsCombined.map((card) => ({
+          id: card.id,
+          question: card.question,
+          answer: card.answer,
+          question_type: card.question_type,
+          ease_factor: card.ease_factor,
+          interval: card.interval,
+          repetitions: card.repetitions,
+          next_review: card.next_review,
+        }))
+        
+        // Filter to only include cards that were in the saved session
+        cards = allCards.filter(card => savedSession.cardIds.includes(card.id))
+        
+        // Sort cards in the same order as the saved session
+        cards.sort((a, b) => {
+          const aIndex = savedSession.cardIds.indexOf(a.id)
+          const bIndex = savedSession.cardIds.indexOf(b.id)
+          return aIndex - bIndex
         })
-        return
-      }
-
-      // Fetch due cards in SCHEDULED ORDER (oldest due first)
-      // This respects the SM-2 algorithm's scheduling - no shuffling!
-      const dueCards = await getDueCards(deck.id)
-      
-      // Optionally add new cards (never studied) - these CAN be shuffled
-      // Limit to 5 new cards per session to avoid overwhelming the user
-      const allNewCards = await getNewCards(deck.id, 5)
-      
-      // Filter out cards that are already in dueCards to avoid duplicates
-      // (New cards with next_review = today appear in both lists)
-      const dueCardIds = new Set(dueCards.map(card => card.id))
-      const newCards = allNewCards.filter(card => !dueCardIds.has(card.id))
-      
-      if (dueCards.length === 0 && newCards.length === 0) {
-        toast.info(t.noCardsAvailable, {
-          description: t.noCardsDue,
+        
+        // Show a toast indicating session is being resumed
+        toast.info("Resuming study session", {
+          description: `Continuing from card ${restoredIndex + 1} of ${cards.length}`,
+          duration: 3000,
         })
-        return
+      } else {
+        // Start a new session
+        setStudyStats({ very_hard: 0, hard: 0, good: 0, easy: 0, too_easy: 0 })
+        
+        // STRICT SPACED REPETITION: Only show cards that are due today
+        const dueCount = await getDueCardsCount(deck.id)
+        
+        if (dueCount === 0) {
+          // No cards due - show message with next review date
+          const nextReviewDate = await getNextReviewDate(deck.id)
+          const nextReviewText = nextReviewDate 
+            ? new Date(nextReviewDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : 'No upcoming reviews'
+          
+          toast.info(t.allCaughtUp, {
+            description: `${t.allCaughtUpMessage} ${t.comeBackTomorrow} ${t.nextReview} ${nextReviewText}`,
+            duration: 5000,
+          })
+          return
+        }
+
+        // Fetch due cards in SCHEDULED ORDER (oldest due first)
+        // This respects the SM-2 algorithm's scheduling - no shuffling!
+        const dueCards = await getDueCards(deck.id)
+        
+        // Optionally add new cards (never studied) - these CAN be shuffled
+        // Limit to 5 new cards per session to avoid overwhelming the user
+        const allNewCards = await getNewCards(deck.id, 5)
+        
+        // Filter out cards that are already in dueCards to avoid duplicates
+        // (New cards with next_review = today appear in both lists)
+        const dueCardIds = new Set(dueCards.map(card => card.id))
+        const newCards = allNewCards.filter(card => !dueCardIds.has(card.id))
+
+        // Pedagogical ordering for new cards: group by type, maintain shuffle within each group
+        const TYPE_ORDER = ['recall', 'comparison', 'causal', 'socratic', 'practical']
+        const grouped = new Map<string, typeof newCards>()
+        for (const card of newCards) {
+          const t = card.question_type || 'recall'
+          if (!grouped.has(t)) grouped.set(t, [])
+          grouped.get(t)!.push(card)
+        }
+        const sortedNewCards = TYPE_ORDER.flatMap(t => grouped.get(t) || [])
+        
+        if (dueCards.length === 0 && newCards.length === 0) {
+          toast.info(t.noCardsAvailable, {
+            description: t.noCardsDue,
+          })
+          return
+        }
+
+        // Combine: DUE CARDS FIRST (scheduled order), then NEW CARDS (pedagogical order)
+        const allCards = [...dueCards, ...sortedNewCards]
+
+        // Convert CardRow to Flashcard format
+        cards = allCards.map((card) => ({
+          id: card.id,
+          question: card.question,
+          answer: card.answer,
+          question_type: card.question_type,
+          ease_factor: card.ease_factor,
+          interval: card.interval,
+          repetitions: card.repetitions,
+          next_review: card.next_review,
+        }))
       }
-
-      // Combine: DUE CARDS FIRST (scheduled order), then NEW CARDS (shuffled)
-      // This ensures urgent reviews come first, then new learning
-      const allCards = [...dueCards, ...newCards]
-
-      // Convert CardRow to Flashcard format
-      const cards: Flashcard[] = allCards.map((card) => ({
-        id: card.id,
-        question: card.question,
-        answer: card.answer,
-        ease_factor: card.ease_factor,
-        interval: card.interval,
-        repetitions: card.repetitions,
-        next_review: card.next_review,
-      }))
 
       setCurrentCards(cards)
+      setStudyStats(restoredStats)
+      setInitialStudyIndex(restoredIndex)
+      setInitialStudyStats(restoredStats)
       setCurrentView("study")
+      
     } catch (error) {
       console.error("Failed to load cards:", error)
       const errorMessage = error instanceof Error ? error.message : "Unknown error"
@@ -406,6 +499,7 @@ export default function Home() {
           onEditCard={handleEditCard}
           onDeleteCard={handleDeleteCard}
           onRegenerate={() => setCurrentView("dashboard")}
+          isSaving={isSavingDeck}
         />
       )}
       {currentView === "study" && (
@@ -414,6 +508,8 @@ export default function Home() {
           cards={currentCards}
           onComplete={handleCompleteStudy}
           onExit={() => setCurrentView("dashboard")}
+          initialIndex={initialStudyIndex}
+          initialStats={initialStudyStats}
         />
       )}
       {currentView === "complete" && currentDeck && (

@@ -113,6 +113,20 @@ export interface Translations {
   goBackToRegenerate: string
   close: string
   wikipediaArticleSuggestions: string
+  // Generation profiles
+  generationProfile: string
+  profileQuickReview: string
+  profileDeepUnderstanding: string
+  profileBalanced: string
+  profileQuickReviewDesc: string
+  profileDeepUnderstandingDesc: string
+  profileBalancedDesc: string
+  // Question types
+  typeRecall: string
+  typeComparison: string
+  typeCausal: string
+  typeSocratic: string
+  typePractical: string
 }
 
 export const translations: Record<'en' | 'es', Translations> = {
@@ -210,6 +224,18 @@ export const translations: Record<'en' | 'es', Translations> = {
     goBackToRegenerate: 'Go back to regenerate flashcards',
     close: 'Close',
     wikipediaArticleSuggestions: 'Wikipedia article suggestions',
+    generationProfile: 'Study mode',
+    profileQuickReview: 'Quick Review',
+    profileDeepUnderstanding: 'Deep Understanding',
+    profileBalanced: 'Balanced',
+    profileQuickReviewDesc: 'Mostly facts, dates, definitions',
+    profileDeepUnderstandingDesc: 'Cause-effect, reasoning, application',
+    profileBalancedDesc: 'Mix of recall and reasoning',
+    typeRecall: 'Recall',
+    typeComparison: 'Comparison',
+    typeCausal: 'Cause & Effect',
+    typeSocratic: 'Reasoning',
+    typePractical: 'Practical',
   },
   es: {
     appName: 'WikiFlash',
@@ -305,6 +331,18 @@ export const translations: Record<'en' | 'es', Translations> = {
     goBackToRegenerate: 'Volver para regenerar tarjetas',
     close: 'Cerrar',
     wikipediaArticleSuggestions: 'Sugerencias de artículos de Wikipedia',
+    generationProfile: 'Modo de estudio',
+    profileQuickReview: 'Repaso Rápido',
+    profileDeepUnderstanding: 'Comprensión Profunda',
+    profileBalanced: 'Balanceado',
+    profileQuickReviewDesc: 'Mayormente hechos, fechas, definiciones',
+    profileDeepUnderstandingDesc: 'Causa-efecto, razonamiento, aplicación',
+    profileBalancedDesc: 'Mezcla de recordación y razonamiento',
+    typeRecall: 'Recordación',
+    typeComparison: 'Comparación',
+    typeCausal: 'Causa y Efecto',
+    typeSocratic: 'Razonamiento',
+    typePractical: 'Práctico',
   },
 }
 
