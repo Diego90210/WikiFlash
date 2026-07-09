@@ -205,9 +205,38 @@ function parseFlashcardResponse(raw: string, expectedCount: number): Flashcard[]
 
   if (valid.length === 0) throw new Error('Groq returned no valid flashcards')
 
-  if (valid.length < expectedCount) {
-    console.warn(`Groq returned ${valid.length}/${expectedCount} cards — proceeding with partial set`)
+  // Deduplicate — remove cards with very similar questions
+  const deduped = deduplicateCards(valid)
+
+  if (deduped.length < expectedCount) {
+    console.warn(`Groq returned ${deduped.length}/${expectedCount} cards after dedup`)
   }
 
-  return valid.slice(0, expectedCount)
+  return deduped.slice(0, expectedCount)
+}
+
+// ── Deduplication ──────────────────────────────────────────────────────────
+
+function normalizeForDedup(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents
+    .replace(/[¿?¡!.,;:]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function deduplicateCards(cards: Flashcard[]): Flashcard[] {
+  const seen = new Set<string>()
+  const result: Flashcard[] = []
+
+  for (const card of cards) {
+    const key = normalizeForDedup(card.question)
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push(card)
+    }
+  }
+
+  return result
 }
