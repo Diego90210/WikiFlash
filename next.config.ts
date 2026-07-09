@@ -13,7 +13,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' https://*.supabase.co https://upload.wikimedia.org https://*.wikipedia.org data: blob:",
       "font-src 'self'",
-      "connect-src 'self' https://*.supabase.co https://api.groq.com",
+      "connect-src 'self' https://*.supabase.co https://api.groq.com https://*.wikipedia.org https://en.wikipedia.org https://es.wikipedia.org",
       "frame-ancestors 'none'",
     ].join("; "),
   },
