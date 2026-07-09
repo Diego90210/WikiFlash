@@ -13,5 +13,5 @@ jobs:
       - name: Ping Supabase
         run: |
           curl -sf "https://fmejwdgnqrhgkrayjpkf.supabase.co/rest/v1/decks?select=id&limit=1" \
-            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtZWp3ZGducXJoZ2tyYXlqcGtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NzcxMzgsImV4cCI6MjA4MTA1MzEzOH0.txlOWV7FioDP9pLAORuVKu5oJl9w4-9WkeffMOLdtB8" \
-            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtZWp3ZGducXJoZ2tyYXlqcGtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0NzcxMzgsImV4cCI6MjA4MTA1MzEzOH0.txlOWV7FioDP9pLAORuVKu5oJl9w4-9WkeffMOLdtB8"
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
