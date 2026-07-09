@@ -28,6 +28,14 @@ export function isValidQuestionType(t: string): t is QuestionType {
   return (VALID_TYPES as string[]).includes(t)
 }
 
+// ponytail: strip injection attempts from user-controlled fields interpolated into prompts
+function sanitizeForPrompt(input: string): string {
+  return input
+    .replace(/["'`\\]/g, '') // strip quotes and backslashes
+    .replace(/\n{3,}/g, '\n\n') // limit newlines
+    .slice(0, 500) // hard cap
+}
+
 /**
  * Generate the system prompt for flashcard generation
  */
@@ -147,7 +155,7 @@ export function getUserPrompt(input: FlashcardPromptInput): string {
 - ${languageInstruction}
 - JSON only, no additional text`
 
-  return `Create flashcards from the following Wikipedia article about "${input.topic}":${sourceNote}
+  return `Create flashcards from the following Wikipedia article about "${sanitizeForPrompt(input.topic)}":${sourceNote}
 
 ${input.content}
 

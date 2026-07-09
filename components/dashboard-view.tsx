@@ -789,7 +789,8 @@ export function DashboardView({ decks, onCreateDeck, onStudyDeck, onDeleteDeck, 
                           {suggestion.snippet && (
                             <div
                               className="text-sm text-muted-foreground line-clamp-2"
-                              dangerouslySetInnerHTML={{ __html: suggestion.snippet }}
+                              // ponytail: strip HTML tags from Wikipedia snippets to prevent XSS
+                              dangerouslySetInnerHTML={{ __html: suggestion.snippet.replace(/<[^>]*>/g, '') }}
                             />
                           )}
                         </button>

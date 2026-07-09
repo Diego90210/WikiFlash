@@ -100,9 +100,6 @@ export default function Home() {
     setCurrentView("generating")
 
     try {
-      // Debug: Log what we're sending to the API
-      console.log('Generating flashcards with:', { content: content?.substring(0, 100) + '...', count: cardCount, topic, language, sourceLanguage })
-      
       // Create a timeout promise
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Request timeout')), 30000) // 30 second timeout
