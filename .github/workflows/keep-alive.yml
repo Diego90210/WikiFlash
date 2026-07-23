@@ -3,7 +3,7 @@ name: Keep Supabase Alive
 # To disable: GitHub repo → Actions → "Keep Supabase Alive" → Disable workflow
 on:
   schedule:
-    - cron: "0 12 */3 * *" # Every 3 days at noon UTC
+    - cron: "0 12 * * *" # Daily at noon UTC
   workflow_dispatch: # Manual trigger button
 
 jobs:
@@ -13,5 +13,11 @@ jobs:
       - name: Ping Supabase
         run: |
           curl -sf "https://fmejwdgnqrhgkrayjpkf.supabase.co/rest/v1/decks?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          curl -sf "https://fmejwdgnqrhgkrayjpkf.supabase.co/rest/v1/cards?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          curl -sf "https://fmejwdgnqrhgkrayjpkf.supabase.co/rest/v1/sessions?select=id&limit=1" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
